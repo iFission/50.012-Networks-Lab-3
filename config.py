@@ -1,10 +1,10 @@
 # Port numbers used by unreliable network layers.
-SENDER_LISTEN_PORT = 8080
+SENDER_LISTEN_PORT = 8082
 RECEIVER_LISTEN_PORT = 8081
 
 # Parameters for unreliable network.
-BIT_ERROR_PROB = 0
-MSG_LOST_PROB = 0
+BIT_ERROR_PROB = 0.1
+MSG_LOST_PROB = 0.1
 
 # Parameters for transport protocols.
 TIMEOUT_MSEC = 100
