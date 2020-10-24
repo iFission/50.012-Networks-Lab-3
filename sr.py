@@ -17,9 +17,9 @@ class SelectiveRepeat:
         self.msg_handler = msg_handler
         self.sender_base = 0
         self.next_sequence_number = 0
-        self.timer_list = []
-        self.ack_list = []
-        self.sender_buffer = []
+        self.timer_list = [self.set_timer(-1)] * config.WINDOW_SIZE
+        self.ack_list = [False] * config.WINDOW_SIZE
+        self.sender_buffer = [b''] * config.WINDOW_SIZE
         self.receiver_last_ack = b''
         self.is_receiver = True
         self.receiver_base = 0
@@ -54,10 +54,11 @@ class SelectiveRepeat:
             packet_offset_index = (self.next_sequence_number -
                                    self.sender_base) % config.WINDOW_SIZE
             print(packet_offset_index)
-            self.sender_buffer.append(packet)
-            self.ack_list.append(False)
-            self.timer_list.append(self.set_timer(self.next_sequence_number))
-            self.timer_list[self.next_sequence_number].start()
+            self.sender_buffer[packet_offset_index] = packet
+            self.ack_list[packet_offset_index] = False
+            self.timer_list[packet_offset_index] = self.set_timer(
+                self.next_sequence_number)
+            self.timer_list[packet_offset_index].start()
             self.next_sequence_number += 1
         else:
             pass
@@ -75,13 +76,16 @@ class SelectiveRepeat:
         # If ACK message, assume its for sender
         if msg_data.msg_type == config.MSG_TYPE_ACK:
             self.sender_lock.acquire()
-            self.ack_list[msg_data.seq_num] = True
+            packet_offset_index = (msg_data.seq_num -
+                                   self.sender_base) % config.WINDOW_SIZE
+            print(packet_offset_index)
+            self.ack_list[packet_offset_index] = True
             print('sender cancel timer after receiving ack')
 
             util.log("Received ACK with seq #" + util.pkt_to_string(msg_data) +
                      ". Cancelling timer.")
-            self.timer_list[msg_data.seq_num].cancel()
-            self.timer_list[msg_data.seq_num] = self.set_timer(
+            self.timer_list[packet_offset_index].cancel()
+            self.timer_list[packet_offset_index] = self.set_timer(
                 msg_data.seq_num)
 
             for timer in self.timer_list:
@@ -92,9 +96,14 @@ class SelectiveRepeat:
             # update the arrays (timer_list, ack_list) accordingly
             # by removing first element, and add empty timer, and False ack
             try:
-                while self.ack_list[self.sender_base] == True:
+                while self.ack_list[0] == True:
                     self.sender_base += 1
-                    #util.log(f"Updated send base to {self.sender_base}")
+                    util.log(f"Updated send base to {self.sender_base}")
+                    self.ack_list = self.ack_list[1:] + [False]
+                    self.timer_list = self.timer_list[1:] + [
+                        self.set_timer(-1)
+                    ]
+                    self.sender_buffer = self.sender_buffer[1:] + [b'']
             except IndexError:
                 pass
 
@@ -130,11 +139,10 @@ class SelectiveRepeat:
                         self.receiver_base += 1
                         self.rcv_list = self.rcv_list[1:] + [False]
                         self.rcv_buffer = self.rcv_buffer[1:] + [b'']
-                        util.log(f"Updated receiver base to {self.receiver_base}")
+                        util.log(
+                            f"Updated receiver base to {self.receiver_base}")
 
-            elif msg_data.seq_num in range(
-                    self.receiver_base - config.WINDOW_SIZE - 1,
-                    self.receiver_base):
+            elif msg_data.seq_num < self.receiver_base:
 
                 self.network_layer.send(ack_pkt)
                 util.log("Packet outside receiver window")
@@ -165,12 +173,12 @@ class SelectiveRepeat:
         util.log(f"Timeout! Resending packet {seq_num}")
         self.sender_lock.acquire()
         packet_offset_index = (seq_num - self.sender_base) % config.WINDOW_SIZE
-        self.timer_list[seq_num].cancel()
-        self.timer_list[seq_num] = self.set_timer(seq_num)
-        pkt = self.sender_buffer[seq_num]
+        self.timer_list[packet_offset_index].cancel()
+        self.timer_list[packet_offset_index] = self.set_timer(seq_num)
+        pkt = self.sender_buffer[packet_offset_index]
         self.network_layer.send(pkt)
         util.log("Resending packet: " +
                  util.pkt_to_string(util.extract_data(pkt)))
-        self.timer_list[seq_num].start()
+        self.timer_list[packet_offset_index].start()
         self.sender_lock.release()
         return
