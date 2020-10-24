@@ -94,7 +94,7 @@ class SelectiveRepeat:
             try:
                 while self.ack_list[self.sender_base] == True:
                     self.sender_base += 1
-                    util.log(f"Updated send base to {self.sender_base}")
+                    #util.log(f"Updated send base to {self.sender_base}")
             except IndexError:
                 pass
 
@@ -119,16 +119,18 @@ class SelectiveRepeat:
                 self.rcv_list[packet_offset_index] = True
 
                 if msg_data.seq_num != self.receiver_base:
-                    self.rcv_buffer[packet_offset_index] = msg_data
+                    # Append the payload
+                    self.rcv_buffer[packet_offset_index] = msg_data.payload
 
                 else:
+                    # Append the payload
+                    self.rcv_buffer[packet_offset_index] = msg_data.payload
                     while self.rcv_list[0] == True:
                         self.msg_handler(self.rcv_buffer[0])
                         self.receiver_base += 1
                         self.rcv_list = self.rcv_list[1:] + [False]
                         self.rcv_buffer = self.rcv_buffer[1:] + [b'']
-                        util.log(
-                            f"Updated receiver base to {self.receiver_base}")
+                        util.log(f"Updated receiver base to {self.receiver_base}")
 
             elif msg_data.seq_num in range(
                     self.receiver_base - config.WINDOW_SIZE - 1,
